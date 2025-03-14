@@ -30,17 +30,32 @@ class Player:
         self.speed = 5
         self.controls = controls
         self.score = 0
+        self.kick_power = 15
+        self.kick_cooldown = 0
+        self.velocity_x = 0
+        self.velocity_y = 0
 
     def move(self):
         keys = pygame.key.get_pressed()
+        # Reset velocity
+        self.velocity_x = 0
+        self.velocity_y = 0
+        
         if keys[self.controls[0]]:  # Nahoru
-            self.y = max(self.radius, self.y - self.speed)
+            self.velocity_y = -self.speed
         if keys[self.controls[1]]:  # Dolů
-            self.y = min(HEIGHT - self.radius, self.y + self.speed)
+            self.velocity_y = self.speed
         if keys[self.controls[2]]:  # Doleva
-            self.x = max(self.radius, self.x - self.speed)
+            self.velocity_x = -self.speed
         if keys[self.controls[3]]:  # Doprava
-            self.x = min(WIDTH - self.radius, self.x + self.speed)
+            self.velocity_x = self.speed
+
+        # Aplikace pohybu
+        self.x = max(self.radius, min(WIDTH - self.radius, self.x + self.velocity_x))
+        self.y = max(self.radius, min(HEIGHT - self.radius, self.y + self.velocity_y))
+
+        if self.kick_cooldown > 0:
+            self.kick_cooldown -= 1
 
     def draw(self):
         pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
@@ -53,20 +68,44 @@ class Ball:
         self.speed_x = 0
         self.speed_y = 0
         self.friction = 0.98
+        self.max_speed = 15
+        self.bounce_dampening = 0.8
 
     def move(self):
         self.x += self.speed_x
         self.y += self.speed_y
-        
-        # Odrazy od stěn
-        if self.x - self.radius <= 0 or self.x + self.radius >= WIDTH:
-            self.speed_x *= -1
-        if self.y - self.radius <= 0 or self.y + self.radius >= HEIGHT:
-            self.speed_y *= -1
+
+        # Omezení maximální rychlosti
+        speed = math.sqrt(self.speed_x**2 + self.speed_y**2)
+        if speed > self.max_speed:
+            scale = self.max_speed / speed
+            self.speed_x *= scale
+            self.speed_y *= scale
+
+        # Odrazy od stěn s útlumem
+        if self.x - self.radius <= 0:
+            self.x = self.radius
+            self.speed_x = abs(self.speed_x) * self.bounce_dampening
+        elif self.x + self.radius >= WIDTH:
+            self.x = WIDTH - self.radius
+            self.speed_x = -abs(self.speed_x) * self.bounce_dampening
+
+        if self.y - self.radius <= 0:
+            self.y = self.radius
+            self.speed_y = abs(self.speed_y) * self.bounce_dampening
+        elif self.y + self.radius >= HEIGHT:
+            self.y = HEIGHT - self.radius
+            self.speed_y = -abs(self.speed_y) * self.bounce_dampening
 
         # Tření
         self.speed_x *= self.friction
         self.speed_y *= self.friction
+
+        # Zastavení míče při velmi malé rychlosti
+        if abs(self.speed_x) < 0.1:
+            self.speed_x = 0
+        if abs(self.speed_y) < 0.1:
+            self.speed_y = 0
 
     def draw(self):
         pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), self.radius)
@@ -81,17 +120,50 @@ def check_collision(player, ball):
     distance = math.sqrt((player.x - ball.x)**2 + (player.y - ball.y)**2)
     return distance < player.radius + ball.radius
 
-def handle_kick(player, ball, kick_key):
-    keys = pygame.key.get_pressed()
-    if keys[kick_key] and check_collision(player, ball):
+def handle_collision(player, ball):
+    if check_collision(player, ball):
+        # Výpočet směru odrazu
         dx = ball.x - player.x
         dy = ball.y - player.y
-        length = math.sqrt(dx**2 + dy**2)
-        if length > 0:
-            dx /= length
-            dy /= length
-            ball.speed_x = dx * 15
-            ball.speed_y = dy * 15
+        distance = math.sqrt(dx**2 + dy**2)
+        
+        if distance == 0:
+            return
+        
+        # Normalizace vektoru
+        dx /= distance
+        dy /= distance
+        
+        # Přenos rychlosti z hráče na míč
+        impact_speed = math.sqrt(player.velocity_x**2 + player.velocity_y**2)
+        
+        # Kombinace současné rychlosti míče a nárazu
+        ball.speed_x = dx * impact_speed * 0.8 + ball.speed_x * 0.2
+        ball.speed_y = dy * impact_speed * 0.8 + ball.speed_y * 0.2
+        
+        # Posunutí míče mimo kolizi
+        overlap = (player.radius + ball.radius) - distance
+        ball.x += dx * overlap
+        ball.y += dy * overlap
+
+def handle_kick(player, ball, kick_key):
+    keys = pygame.key.get_pressed()
+    if keys[kick_key] and check_collision(player, ball) and player.kick_cooldown <= 0:
+        # Směr kopu
+        dx = ball.x - player.x
+        dy = ball.y - player.y
+        distance = math.sqrt(dx**2 + dy**2)
+        
+        if distance > 0:
+            dx /= distance
+            dy /= distance
+            
+            # Aplikace síly kopu
+            ball.speed_x += dx * player.kick_power
+            ball.speed_y += dy * player.kick_power
+            
+            # Nastavení cooldownu pro kop
+            player.kick_cooldown = 15
 
 # Vytvoření objektů
 player1 = Player(WIDTH//4, HEIGHT//2, RED, [pygame.K_w, pygame.K_s, pygame.K_a, pygame.K_d])
@@ -110,7 +182,9 @@ while running:
     player1.move()
     player2.move()
     
-    # Kopání míče
+    # Kolize a kopání
+    handle_collision(player1, ball)
+    handle_collision(player2, ball)
     handle_kick(player1, ball, pygame.K_SPACE)
     handle_kick(player2, ball, pygame.K_RETURN)
 
@@ -131,8 +205,6 @@ while running:
 
     # Vykreslení
     screen.fill(BLACK)
-    
-    # Vykreslení hřiště
     pygame.draw.line(screen, WHITE, (WIDTH//2, 0), (WIDTH//2, HEIGHT))
     
     # Vykreslení skóre
@@ -154,7 +226,6 @@ text = font.render(winner_text, True, WHITE)
 screen.blit(text, (WIDTH//2 - text.get_width()//2, HEIGHT//2))
 pygame.display.flip()
 
-# Čekání před ukončením
 pygame.time.wait(2000)
 pygame.quit()
 sys.exit()
