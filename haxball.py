@@ -60,28 +60,35 @@ class Player:
         self.velocity_x = 0
         self.velocity_y = 0
 
-    def move(self):
-        keys = pygame.key.get_pressed()
-        self.velocity_x = 0
-        self.velocity_y = 0
-        
-        if keys[self.controls[0]]:  # Nahoru
-            self.velocity_y = -self.speed
-        if keys[self.controls[1]]:  # Dolů
-            self.velocity_y = self.speed
-        if keys[self.controls[2]]:  # Doleva
-            self.velocity_x = -self.speed
-        if keys[self.controls[3]]:  # Doprava
-            self.velocity_x = self.speed
+   def move(self):
+    keys = pygame.key.get_pressed()
+    self.velocity_x = 0
+    self.velocity_y = 0
+    
+    # Detekce stisknutých kláves pro pohyb
+    if keys[self.controls[0]]:  # Nahoru
+        self.velocity_y = -self.speed
+    if keys[self.controls[1]]:  # Dolů
+        self.velocity_y = self.speed
+    if keys[self.controls[2]]:  # Doleva
+        self.velocity_x = -self.speed
+    if keys[self.controls[3]]:  # Doprava
+        self.velocity_x = self.speed
 
-        self.x = max(self.radius, min(WIDTH - self.radius, self.x + self.velocity_x))
-        self.y = max(self.radius, min(HEIGHT - self.radius, self.y + self.velocity_y))
+    # Normalizace diagonálního pohybu
+    if self.velocity_x != 0 and self.velocity_y != 0:
+        # Pythagorova věta pro normalizaci rychlosti
+        diagonal_speed = math.sqrt(self.velocity_x**2 + self.velocity_y**2)
+        scale = self.speed / diagonal_speed
+        self.velocity_x *= scale
+        self.velocity_y *= scale
 
-        if self.kick_cooldown > 0:
-            self.kick_cooldown -= 1
+    # Aplikace pohybu s omezením hranic
+    self.x = max(self.radius, min(WIDTH - self.radius, self.x + self.velocity_x))
+    self.y = max(self.radius, min(HEIGHT - self.radius, self.y + self.velocity_y))
 
-    def draw(self):
-        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
+    if self.kick_cooldown > 0:
+        self.kick_cooldown -= 1
 
 class Ball:
     def __init__(self):
