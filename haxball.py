@@ -60,41 +60,48 @@ class Player:
         self.velocity_x = 0
         self.velocity_y = 0
 
-   def move(self):
-    keys = pygame.key.get_pressed()
-    self.velocity_x = 0
-    self.velocity_y = 0
-    
-    # Detekce stisknutých kláves pro pohyb
-    if keys[self.controls[0]]:  # Nahoru
-        self.velocity_y = -self.speed
-    if keys[self.controls[1]]:  # Dolů
-        self.velocity_y = self.speed
-    if keys[self.controls[2]]:  # Doleva
-        self.velocity_x = -self.speed
-    if keys[self.controls[3]]:  # Doprava
-        self.velocity_x = self.speed
+    def move(self):
+        keys = pygame.key.get_pressed()
+        self.velocity_x = 0
+        self.velocity_y = 0
+        
+        # Kontrola kontaktu s míčem
+        ball_contact = check_collision(self, ball)
+        
+        # Nastavení rychlosti pohybu
+        move_speed = self.speed * (0.3 if ball_contact else 1.0)
+        
+        if keys[self.controls[0]]:  # Nahoru
+            self.velocity_y = -move_speed
+        if keys[self.controls[1]]:  # Dolů
+            self.velocity_y = move_speed
+        if keys[self.controls[2]]:  # Doleva
+            self.velocity_x = -move_speed
+        if keys[self.controls[3]]:  # Doprava
+            self.velocity_x = move_speed
 
-    # Normalizace diagonálního pohybu
-    if self.velocity_x != 0 and self.velocity_y != 0:
-        # Pythagorova věta pro normalizaci rychlosti
-        diagonal_speed = math.sqrt(self.velocity_x**2 + self.velocity_y**2)
-        scale = self.speed / diagonal_speed
-        self.velocity_x *= scale
-        self.velocity_y *= scale
+        # Normalizace diagonálního pohybu
+        if self.velocity_x != 0 and self.velocity_y != 0:
+            diagonal_speed = math.sqrt(self.velocity_x**2 + self.velocity_y**2)
+            scale = move_speed / diagonal_speed
+            self.velocity_x *= scale
+            self.velocity_y *= scale
 
-    # Aplikace pohybu s omezením hranic
-    self.x = max(self.radius, min(WIDTH - self.radius, self.x + self.velocity_x))
-    self.y = max(self.radius, min(HEIGHT - self.radius, self.y + self.velocity_y))
+        # Aplikace pohybu s omezením hranic
+        self.x = max(self.radius, min(WIDTH - self.radius, self.x + self.velocity_x))
+        self.y = max(self.radius, min(HEIGHT - self.radius, self.y + self.velocity_y))
 
-    if self.kick_cooldown > 0:
-        self.kick_cooldown -= 1
+        if self.kick_cooldown > 0:
+            self.kick_cooldown -= 1
+
+    def draw(self):
+        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.radius)
 
 class Ball:
     def __init__(self):
         self.x = WIDTH // 2
         self.y = HEIGHT // 2
-        self.radius = 10
+        self.radius = 15  # Zvětšeno z 10 na 15
         self.speed_x = 0
         self.speed_y = 0
         self.friction = 0.98
@@ -157,17 +164,13 @@ def handle_collision(player, ball):
         if distance == 0:
             return
         
-        dx /= distance
-        dy /= distance
+        # Zpomalení míče při kontaktu s hráčem
+        ball.speed_x *= 0.3  # Výrazné zpomalení
+        ball.speed_y *= 0.3
         
-        impact_speed = math.sqrt(player.velocity_x**2 + player.velocity_y**2)
-        
-        ball.speed_x = dx * impact_speed * 0.8 + ball.speed_x * 0.2
-        ball.speed_y = dy * impact_speed * 0.8 + ball.speed_y * 0.2
-        
-        overlap = (player.radius + ball.radius) - distance
-        ball.x += dx * overlap
-        ball.y += dy * overlap
+        # Udržení míče blízko hráče
+        ball.x = player.x + dx * (player.radius + ball.radius) / distance
+        ball.y = player.y + dy * (player.radius + ball.radius) / distance
 
 def handle_kick(player, ball, kick_key):
     keys = pygame.key.get_pressed()
