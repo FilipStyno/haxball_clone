@@ -10,16 +10,41 @@ WIDTH = 800
 HEIGHT = 600
 FPS = 60
 
+# Rozměry branky
+GOAL_HEIGHT = 140
+GOAL_WIDTH = 20
+GOAL_Y_OFFSET = (HEIGHT - GOAL_HEIGHT) // 2
+
 # Barvy
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 BLUE = (0, 0, 255)
+GOAL_COLOR = (200, 200, 200)
 
 # Nastavení obrazovky
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("HaxBall Clone")
 clock = pygame.time.Clock()
+
+class Goal:
+    def __init__(self, x, width, height, y_offset):
+        self.x = x
+        self.width = width
+        self.height = height
+        self.y = y_offset
+        self.rect = pygame.Rect(x, y_offset, width, height)
+
+    def draw(self):
+        pygame.draw.rect(screen, GOAL_COLOR, self.rect)
+        # Horní a dolní tyčka
+        pygame.draw.rect(screen, WHITE, (self.x, self.y, self.width, 5))
+        pygame.draw.rect(screen, WHITE, (self.x, self.y + self.height - 5, self.width, 5))
+
+    def check_goal(self, ball):
+        ball_rect = pygame.Rect(ball.x - ball.radius, ball.y - ball.radius, 
+                              ball.radius * 2, ball.radius * 2)
+        return self.rect.colliderect(ball_rect)
 
 class Player:
     def __init__(self, x, y, color, controls):
@@ -37,7 +62,6 @@ class Player:
 
     def move(self):
         keys = pygame.key.get_pressed()
-        # Reset velocity
         self.velocity_x = 0
         self.velocity_y = 0
         
@@ -50,7 +74,6 @@ class Player:
         if keys[self.controls[3]]:  # Doprava
             self.velocity_x = self.speed
 
-        # Aplikace pohybu
         self.x = max(self.radius, min(WIDTH - self.radius, self.x + self.velocity_x))
         self.y = max(self.radius, min(HEIGHT - self.radius, self.y + self.velocity_y))
 
@@ -75,21 +98,13 @@ class Ball:
         self.x += self.speed_x
         self.y += self.speed_y
 
-        # Omezení maximální rychlosti
         speed = math.sqrt(self.speed_x**2 + self.speed_y**2)
         if speed > self.max_speed:
             scale = self.max_speed / speed
             self.speed_x *= scale
             self.speed_y *= scale
 
-        # Odrazy od stěn s útlumem
-        if self.x - self.radius <= 0:
-            self.x = self.radius
-            self.speed_x = abs(self.speed_x) * self.bounce_dampening
-        elif self.x + self.radius >= WIDTH:
-            self.x = WIDTH - self.radius
-            self.speed_x = -abs(self.speed_x) * self.bounce_dampening
-
+        # Odrazy od horní a dolní stěny
         if self.y - self.radius <= 0:
             self.y = self.radius
             self.speed_y = abs(self.speed_y) * self.bounce_dampening
@@ -97,11 +112,17 @@ class Ball:
             self.y = HEIGHT - self.radius
             self.speed_y = -abs(self.speed_y) * self.bounce_dampening
 
-        # Tření
+        # Odrazy od levé a pravé stěny (mimo branky)
+        if self.x - self.radius <= 0 and (self.y < GOAL_Y_OFFSET or self.y > GOAL_Y_OFFSET + GOAL_HEIGHT):
+            self.x = self.radius
+            self.speed_x = abs(self.speed_x) * self.bounce_dampening
+        elif self.x + self.radius >= WIDTH and (self.y < GOAL_Y_OFFSET or self.y > GOAL_Y_OFFSET + GOAL_HEIGHT):
+            self.x = WIDTH - self.radius
+            self.speed_x = -abs(self.speed_x) * self.bounce_dampening
+
         self.speed_x *= self.friction
         self.speed_y *= self.friction
 
-        # Zastavení míče při velmi malé rychlosti
         if abs(self.speed_x) < 0.1:
             self.speed_x = 0
         if abs(self.speed_y) < 0.1:
@@ -122,7 +143,6 @@ def check_collision(player, ball):
 
 def handle_collision(player, ball):
     if check_collision(player, ball):
-        # Výpočet směru odrazu
         dx = ball.x - player.x
         dy = ball.y - player.y
         distance = math.sqrt(dx**2 + dy**2)
@@ -130,18 +150,14 @@ def handle_collision(player, ball):
         if distance == 0:
             return
         
-        # Normalizace vektoru
         dx /= distance
         dy /= distance
         
-        # Přenos rychlosti z hráče na míč
         impact_speed = math.sqrt(player.velocity_x**2 + player.velocity_y**2)
         
-        # Kombinace současné rychlosti míče a nárazu
         ball.speed_x = dx * impact_speed * 0.8 + ball.speed_x * 0.2
         ball.speed_y = dy * impact_speed * 0.8 + ball.speed_y * 0.2
         
-        # Posunutí míče mimo kolizi
         overlap = (player.radius + ball.radius) - distance
         ball.x += dx * overlap
         ball.y += dy * overlap
@@ -149,7 +165,6 @@ def handle_collision(player, ball):
 def handle_kick(player, ball, kick_key):
     keys = pygame.key.get_pressed()
     if keys[kick_key] and check_collision(player, ball) and player.kick_cooldown <= 0:
-        # Směr kopu
         dx = ball.x - player.x
         dy = ball.y - player.y
         distance = math.sqrt(dx**2 + dy**2)
@@ -157,12 +172,8 @@ def handle_kick(player, ball, kick_key):
         if distance > 0:
             dx /= distance
             dy /= distance
-            
-            # Aplikace síly kopu
             ball.speed_x += dx * player.kick_power
             ball.speed_y += dy * player.kick_power
-            
-            # Nastavení cooldownu pro kop
             player.kick_cooldown = 15
 
 # Vytvoření objektů
@@ -170,42 +181,48 @@ player1 = Player(WIDTH//4, HEIGHT//2, RED, [pygame.K_w, pygame.K_s, pygame.K_a, 
 player2 = Player(3*WIDTH//4, HEIGHT//2, BLUE, [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT])
 ball = Ball()
 
+# Vytvoření branek
+left_goal = Goal(0, GOAL_WIDTH, GOAL_HEIGHT, GOAL_Y_OFFSET)
+right_goal = Goal(WIDTH - GOAL_WIDTH, GOAL_WIDTH, GOAL_HEIGHT, GOAL_Y_OFFSET)
+
 # Herní smyčka
 running = True
 while running:
-    # Zpracování událostí
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-    # Pohyb hráčů
     player1.move()
     player2.move()
     
-    # Kolize a kopání
     handle_collision(player1, ball)
     handle_collision(player2, ball)
     handle_kick(player1, ball, pygame.K_SPACE)
     handle_kick(player2, ball, pygame.K_RETURN)
 
-    # Pohyb míče
     ball.move()
 
     # Kontrola gólů
-    if ball.x < 0:
-        player2.score += 1
-        ball.reset()
-    elif ball.x > WIDTH:
+    if right_goal.check_goal(ball):
         player1.score += 1
         ball.reset()
+    elif left_goal.check_goal(ball):
+        player2.score += 1
+        ball.reset()
 
-    # Kontrola vítězství
     if player1.score >= 5 or player2.score >= 5:
         running = False
 
     # Vykreslení
     screen.fill(BLACK)
+    
+    # Vykreslení hřiště
     pygame.draw.line(screen, WHITE, (WIDTH//2, 0), (WIDTH//2, HEIGHT))
+    pygame.draw.circle(screen, WHITE, (WIDTH//2, HEIGHT//2), 50, 1)
+    
+    # Vykreslení branek
+    left_goal.draw()
+    right_goal.draw()
     
     # Vykreslení skóre
     font = pygame.font.Font(None, 74)
