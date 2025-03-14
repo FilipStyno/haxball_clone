@@ -176,6 +176,25 @@ def handle_kick(player, ball, kick_key):
             ball.speed_y += dy * player.kick_power
             player.kick_cooldown = 15
 
+def handle_player_collision(player1, player2):
+    dx = player2.x - player1.x
+    dy = player2.y - player1.y
+    distance = math.sqrt(dx**2 + dy**2)
+    
+    if distance < player1.radius + player2.radius:
+        if distance == 0:
+            return
+        
+        overlap = (player1.radius + player2.radius) - distance
+        dx /= distance
+        dy /= distance
+        
+        # Posun hráčů od sebe
+        player1.x -= dx * overlap / 2
+        player1.y -= dy * overlap / 2
+        player2.x += dx * overlap / 2
+        player2.y += dy * overlap / 2
+
 # Vytvoření objektů
 player1 = Player(WIDTH//4, HEIGHT//2, RED, [pygame.K_w, pygame.K_s, pygame.K_a, pygame.K_d])
 player2 = Player(3*WIDTH//4, HEIGHT//2, BLUE, [pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT])
@@ -199,6 +218,7 @@ while running:
     handle_collision(player2, ball)
     handle_kick(player1, ball, pygame.K_SPACE)
     handle_kick(player2, ball, pygame.K_RETURN)
+    handle_player_collision(player1, player2)
 
     ball.move()
 
